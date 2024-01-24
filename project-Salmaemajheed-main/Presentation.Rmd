@@ -1,0 +1,229 @@
+---
+title: "Mother Jones Data"
+author: "Salma Emjaheed"
+date: "2022-12-15"
+output: ioslides_presentation
+---
+
+```{r echo = FALSE, include=FALSE}
+library(stringr)
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(broom)
+library(openintro)
+library(devtools)
+library(GGally)
+library(qqplotr)
+```
+
+```{r echo = FALSE, include=FALSE}
+mother_jones <- read_excel("data/Mother Jones - Mass Shootings Database, 1982 - 2022.xlsx", na = "-")
+names(mother_jones)
+regions <- read.csv("data/us census bureau regions and divisions.csv")
+
+```
+
+```{r age_shooter_fill_missing_values, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(
+    age_of_shooter = as.character(age_of_shooter),
+    age_of_shooter = case_when(
+    case == "Tulsa medical center shooting"            ~ "45",
+    case == "Orange office complex shooting"           ~ "44",
+    case == "Jersey City kosher market shooting"       ~ "47 & 50",
+    TRUE                                               ~ age_of_shooter
+    )
+  )
+```
+
+```{r make_numeric, echo = FALSE, include = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(age_of_shooter = as.numeric(age_of_shooter)) %>%
+  mutate(total_victims = as.numeric(total_victims)) %>%
+  mutate(injured = as.numeric(injured)) 
+```
+
+## Table of Contents
+- Data and Background Information
+- Research Question
+- Data Wrangling 
+- Looking at the age of shooter, total victims, and the year variables
+- Using age of shooter to predict total victims
+- Improving the model by adding year as a predictor with age of shooter
+
+## Data And Background Information
+- Four decades of mass shooting cases, from 1982 to 2022. 
+- Variables are cases, location, date, summary, fatalities, injured, total victims, prior signs of mental health issues, mental health details, weapons obtained illegally, where the weapons were obtained, weapon type, weapon details, race, gender, latitude, longitude, type, and year.
+- Case/column: mass shooting event
+- Each case leading up to year 2012 was of a mass shooting where at least four people died. And the cases from the years 2013 to 2022 are of mass shootings where at least three people died to match the federal definition of what a mass shooting is.
+
+## Problem Investigated
+
+- What factors can predict total victims in a mass shooting? I assumed that prior signs of mental health issues is a great predictor for total victims. 
+
+## Data Wrangling
+
+- Renamed location...8 and location...2 to location_type and location.  
+- Inner joined regions data set.
+- Used separate() function to create city and state columns. 
+- Used case_when() to reduce gender column (“F,” “M,” “Female,” “Male,” and “Female & Male”), location type column, and race column
+
+## Data Wrangling Continued
+
+- For the race column, one value was “unclear,” so I grouped that with NA. Because if it is not clear, we do not know the race of the person, so it would not be available. I did the same with prior signs of mental health issues, where I put TBD, Unclear, and Unknown under NA to reduce the levels. 
+- For the shooter age column, there were three NAs. I found their ages in the details columns, so I mutated them and changed those NA to the correct age of the shooter. 
+- For total victim variables and other variables necessary for this analysis, I made the ones I assumed to be numeric as numeric and not categorical.
+- I reduced the levels in multiple categorical variables. For example, some categories had NAs and Unknowns. I put these levels together as one level under NAs.
+
+## Explanatory Data Analysis | Total Victims Distribution
+
+```{r distribution_summary_stat_victims, echo = FALSE}
+mother_jones <- mother_jones %>% 
+  filter(total_victims < 80)
+
+ggplot(data = mother_jones, mapping = aes(x = total_victims)) +
+  geom_histogram(binwidth = 5) + 
+  labs(x = "Total Victims", y = "Frequency", title = "Distribution of Total Vicitms")
+```
+
+## Explanatory Data Analysis | Total Victims Summary Statistics
+
+```{r echo = FALSE}
+mother_jones %>% 
+  mutate(total_victims = as.numeric(total_victims)) %>%
+  summarize(Mean = mean(total_victims, na.rm = TRUE),
+            Maximum = max(total_victims, na.rm = TRUE),
+            Minimum = min(total_victims, na.rm = TRUE),
+            Median = median(total_victims, na.rm = TRUE),
+            SD = sd(total_victims, na.rm = TRUE),
+            )
+```
+
+## Explanatory Data Analysis | Age of Shooter Distribution
+
+```{r distribution_summary_stat_age, echo = FALSE, warning = FALSE}
+mother_jones %>% 
+  mutate(age_of_shooter = as.numeric(age_of_shooter)) %>%
+ggplot(mother_jones, mapping = aes(x = age_of_shooter)) +
+  geom_histogram(bins = 15) +
+  labs(title = "Distribution of Shooter's Age", subtitle = "Value with '47 & 50' is excluded", x = "Age of Shooter", y = "Frequency")
+```
+
+## Explanatory Data Analysis | Age of Shooter Summary Statistics
+```{r echo = FALSE}
+mother_jones %>% 
+  mutate(age_of_shooter = as.numeric(age_of_shooter)) %>%
+  summarize(Mean = mean(age_of_shooter, na.rm = TRUE),
+            Maximum = max(age_of_shooter, na.rm = TRUE),
+            Minimum = min(age_of_shooter, na.rm = TRUE),
+            Median = median(age_of_shooter, na.rm = TRUE),
+            SD = sd(age_of_shooter, na.rm = TRUE),
+            )
+```
+
+## Explanatory Data Analysis | Year Histogram
+
+```{r distribution_year, echo = FALSE}
+mother_jones %>%
+    mutate(year = as.datetime(year)) %>%
+ggplot(data = mother_jones, mapping = aes(x = year)) +
+  geom_histogram(binwidth = 3) +
+  labs(title = "Distribution of Year", x = NULL, y = "Frequency")
+```
+
+## Explanatory Data Analysis | Year 
+
+```{r echo = FALSE}
+mother_jones %>%
+  count(year) %>%
+  ggplot(aes(x = year, y = n, group = 1)) +
+  geom_line() + 
+  labs(x = "Year", y = "Frequency", title = "Distribution of Mass Shootings Throughout the Years")
+```
+
+## Taking log of Total Victims
+
+```{r add_log_of_victims_to_dataset, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(total_victims_log = log(total_victims, base = exp(1)))
+mother_jones %>%
+  select(total_victims_log)
+```
+
+## Finding a Linear Relationship Between log of Total Victims and Age of Shooter
+
+```{r age_of_shooter_victims_box_plot, echo = FALSE, warning = FALSE, message = FALSE}
+ggplot(mother_jones, mapping = aes(x = age_of_shooter, y = total_victims_log)) +
+  geom_point() +      
+  geom_smooth(method = "lm", se = FALSE, col = "blue") + 
+  labs(x = "Age of Shooter", y = "Total Victims", title = "Age of Shooter vs. Log of Total Victims")
+```
+
+## Age of Shooter Residuals Plot
+```{r age_resid_plot, echo = FALSE}
+m_total_victims_age <- lm(total_victims_log ~ age_of_shooter, data = mother_jones)
+augment(m_total_victims_age) %>%
+ggplot(mapping = aes(x = .fitted, y = .resid)) + 
+  geom_jitter(alpha = .5) + 
+  geom_hline(yintercept = 0, color = "blue", lty = 2) + 
+  labs(x = "Predicted Total Victims", y = "Residuals")
+```
+
+## Age of Shooter Residuals Histogram
+```{r resid_distribution_age, echo = FALSE}
+augment(m_total_victims_age) %>%
+  ggplot(mapping = aes(x = .resid)) +
+    geom_histogram() 
+```
+
+## Age of Shooter Normal Probability Plot
+```{r normal_probability_plot_age, echo = FALSE}
+augment(m_total_victims_age) %>%
+  ggplot(mapping = aes(sample = .resid)) +
+    stat_qq_point(size = 2, color = "red") + 
+    stat_qq_line(color="green") +
+    xlab("Theoretical Quantiles") + ylab("Sample Quantiles") 
+```
+
+## Assumptions
+- The age of the shooter checked all the assumptions. The residuals by the predicted plot were randomly scattered, and points lined up perfectly on the x = y line in the normal probability plot. Because no patterns were seen, independence was assumed. The histogram of the residuals was normally distributed. The constant variance was checked as the residuals by the predicted plot did not have any patterns.
+
+## Creating Model 
+```{r age_model, echo = FALSE}
+summary(m_total_victims_age)
+```
+
+## R-squared
+
+- About 4.7% of the variation in age of shooter  can be explained by linear relationship with total victims.
+
+## R-squared Interpretation of Best Model
+```{r r-squared, echo = FALSE}
+m_total_victims_age_year <- lm(total_victims_log ~ age_of_shooter + year, data = mother_jones)
+summary(m_total_victims_age_year)
+```
+
+```{r best_model, echo = FALSE}
+tidy(m_total_victims_age_year)
+confint(m_total_victims_age_year)
+```
+
+
+Equation of the best model: $\widehat{log(total_victims)} = 39.547 - 0.016ageOfShooter - 0.018year$
+
+## Best model Model 
+
+- Age of shooter + year interpretation:   For the best model for predicting total victims, I found all else held constant, for each additional year, the total victims number is predicted, on average, to increase by a factor of .982. All else held constant, for each additional increase in age in years, the total victims number is predicted, on average, to increase by a factor of .837. 
+- Age of shooter + year interpretation: In the model with year as the only predictor, the adjusted r-squared was 4.3%. In the model with the age of the shooter as the only predictor, the r-squared was 4.9%. In the model with both predictors, the r-squared was 11.1%. Adding an extra variable improved the model. 
+
+## Best model Model Continued
+
+- All the other variables I did not add to this model because of the way they increased the p-value to above .05. However, most of the time the r-squared did increase. My reasoning for not adding them is because of the way they increased the p-values or sometimes because of the confidence interval including 0. 
+- My process for creating the best model was to manually do forward selection.  
+
+## Conclusions
+
+-   What I learned is that as the years progress, the total victim's number decreases, which is good news. I also learned there aren’t many mass shootings in the US. Although interestingly, as the year's increase, the number of cases also increases. This dataset spans from 1982 to 1922, and there are 133 cases, which is not as many as I thought it would be. It makes sense the number of victims decreases as the age of the shooter increases. The shooters are more likely to commit more damage when they are younger than older. 
+- I feel that for the future I will focus more on the categorical variables.

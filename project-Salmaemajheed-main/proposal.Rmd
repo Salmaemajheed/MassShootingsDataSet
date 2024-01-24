@@ -1,0 +1,398 @@
+---
+title: "Analysis of Mass Shootings Across the U.S."
+author: "Salma Emjaheed"
+date: "11/1/2022"
+output:
+  html_document: default
+  github_document: default
+---
+
+## Section 1. Introduction
+This data set came from Mother Jones researchers on four decades of mass shooting cases, from 1982 to 2022,
+including information on the attackers’ profiles, the types of weapons they used, and the number of victims
+they injured and killed. Each row represents a mass shooting event. The values in the sources variable in the 
+data link to websites that have the news or more information about the mass shooting; this is how it was 
+collected. For the purposes of this data set, a mass shooting is defined as a shooting that occurred in a public 
+place or a place that was filled with a crowd, such as a private property where strangers (public crowd) were 
+in it. Each case leading up to the year 2012 was of a mass shooting where at least four people died. And the 
+cases from the years 2013 to 2022 are of mass shootings where at least three people died. For each case, 
+only one shooter was involved, except in two cases where two shooters were involved. There are some spree 
+killings as opposed to mass shootings, where the shootings happen in different locations but over a short 
+period of time and by the same perpetrator. In many cases, the perpetrators were killed or wounded, either 
+by themselves or someone else; in this data set, they are not counted under the variable total victims. 
+The variables are case, location, date, summary, fatalities, injured, total victims, prior signs of mental health issues, mental health details, weapons obtained illegally, where the weapons were obtained, weapon type, weapon details, race, gender, latitude, longitude, type, and year. I want to take a look at how the demographics (age, race, and gender) of the perpetrators changed over the years, starting in 1982. 
+
+Research questions
+Are the perpetrators, before the 21st century, more likely to be majority male, majority white, and majority under 40? The purpose of this question is to see how the gender, race, and age demographics of perpetrators have changed over the years. What is the location_type that has had the most mass shootings occur in it? From the most common location, what age of perpetrator is most common? Are people who are in their late teens or 20s more likely to steal a weapon from a family member? Are the fatalities much higher when the weapon was stolen or obtained illegally than when it was not obtained illegally I can find this information from weapon details, but will need to make a new column out of it. 
+
+What are the 10 most commonly used weapons in a mass shooting? -- I want to make a new data set for this, where each row represents a gun type. There will be two columns, one for count and one for weapon type. The count will be a more accurate count of each type of weapon that was used. The weapon_type count in this data set counts how many semiautomatic handguns there are and how many semiautomatic handguns and revolvers there are separately. For example, it shows there are three semiautomatic handguns and two semiautomatic handguns and revolvers. With the new data set, I want to show that there are five semiautomatic handguns and two revolvers. 
+The purpose of this question is to see what types of guns mass shooters have access to the most. Which types are obtained the most, either legally or illegally? I could break it down further to see if the top five are obtained legally and the top five are obtained illegally. This might show me if some weapons are always obtained legally and if some weapons are always obtained illegally.
+I could also facet by weapon types and have box plots of the ages to see the distribution of shooter ages per weapon type (only the top 10).
+
+Linear model question: 
+Is there a correlation between shooter age and fatalities? 
+Is there a correlation between shooter age and year?
+
+```{r load-pkg, echo = FALSE, include=FALSE}
+#knitr::opts_chunk$set(echo = TRUE)
+library("stringr")
+library("readxl")
+library("tidyverse")
+library("dplyr")
+library("lubridate")
+mother_jones <- read_excel("data/Mother Jones - Mass Shootings Database, 1982 - 2022.xlsx", na = "-")
+names(mother_jones)
+```
+
+```{r glimpse, echo = FALSE }
+glimpse(mother_jones)
+```
+
+
+```{r not_needed_columns, echo = FALSE}
+mother_jones <- mother_jones %>%
+   select(-c(sources, sources_additional_age, mental_health_sources))
+```
+
+Data source: https://www.motherjones.com/politics/2012/12/mass-shootings-mother-jones-full-data/ 
+
+## Section 2. Data analysis plan
+
+Explanatory Data Analysis description: 
+First, I renamed location...8, and location...2 to location_type and location. This dataset had two columns named location, so r named added ...8 and ...2 at the end of both of them to differentiate them. 
+
+From the details column, I extracted the shooter's name using the separate function. I noticed that most of the values in the details column started with shooter's name followed by a comma, age, and details of the case. This is why I separated these values by comma and extracted shooter's full name from details. Because not all of the values were structured that way, I had to use mutate and case_when to change some of the values in the shooter's name. From there, I used string extract to take the last name of shooter from shooter's name column and put in a shooter's last name column. Then, I used word and passed in 1 to extract the first word in column shooter's name, which I put in a new column called shooter's first name. I moved both of these columns to be the fifth and sixth columns instead of at the very end of the data set. I removed shooter's name because it was unnecessary. For the rows that had two shooters, I made sure to use case when and add both names to shooter's first name and shooter's last names because only one of the names was extracted. 
+
+I also separated the column location, which had city and state separated by a comma. I used the separate function for that too, creating two columns state and city. The gender column had five levels F, M, Female, Male and Female & Male. I cleaned that up with mutate and case_when, creating only three levels. 
+
+The location type column had two workplace levels, one with an upper case "W," and with a lower case "w." Same problem with the religious column. Also, with the column race, levels black and white had the same problem and I fixed it the same way by case_when. 
+
+For the weapon's ilegally obtained I changed all the "yes" to "Yes," 'Yes ("some of the weapons were purchased legally and some of them may not have been")' to "Some," and "Kelley passed federal criminal background checks; the US Air Force failed to provide information on his criminal history to the FBI" to "Unknown." There were multiple new line characters within different levels, which I removed as well. 
+
+For the shooter age column, there were three NA. I was able to find their ages in the details columns, so I mutated them and changed thoes NA to the correct age of shooter.  
+
+```{r change_coloumn_names_location, echo = FALSE}
+mother_jones <- mother_jones %>%
+  rename (
+    location_type = 'location...8',
+    location = 'location...2'
+  )
+```
+
+```{r shooter_name_created, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(details = summary1 <- summary) %>%
+  separate(col=summary, into = 'shooter_name', sep=', ') %>%
+  mutate(shooter_name = case_when(
+      location == "Smithsburg, Maryland" ~ NA_character_,
+      location == "Sacramento, California" ~ NA_character_, 
+      shooter_name == 'Suspected gunman Robert "Bobby" Crimo' ~ 'Robert "Bobby" Crimo',
+      shooter_name == "Army veteran Albert Cheung Wong"~ "Albert Cheung Wong",
+      shooter_name == "Syed Rizwan Farook left a Christmas party held at Inland Regional Center" ~ "Syed Rizwan Farook",
+      location == "Roseburg, Oregon" ~ "Chris Harper Mercer",
+      shooter_name == "Kuwaiti-born Mohammod Youssuf Abdulazeez" ~ "Mohammod Youssuf Abdulazeez",
+      shooter_name == "Army Specialist Ivan Lopez" ~ "Ivan Lopez",
+      shooter_name == "U.S. Army veteran Wade Michael Page" ~ "Wade Michael Page",
+      shooter_name == "Army psychiatrist Nidal Malik Hasan" ~ "Nidal Malik Hasan",
+      shooter_name == "Disgruntled employee Wesley Neal Higdon" ~ "Wesley Neal Higdon",
+      shooter_name == "Off-duty sheriff's deputy Tyler Peterson" ~ "Tyler Peterson",
+      shooter_name == "Virginia Tech student Seung-Hui Cho" ~ "Seung-Hui Cho",
+      shooter_name == "Former postal worker Jennifer Sanmarco" ~ "Jennifer Sanmarco",
+      shooter_name == "Living Church of God member Terry Michael Ratzmann" ~ "Terry Michael Ratzmann",
+      shooter_name == "Assembly line worker Douglas Williams" ~ "Douglas Williams",
+      shooter_name == "Fired employee William D. Baker" ~ "William D. Baker",
+      shooter_name == "Hotel employee Silvio Leyva" ~ "Silvio Leyva",
+      shooter_name == "Day trader Mark O. Barton" ~ "Mark O. Barton",
+      shooter_name == "After he was expelled for having a gun in his locker" ~ "Kipland P.Kinkel",
+      shooter_name == "Lottery worker Matthew Beck" ~ "Matthew Beck",
+      shooter_name == "Former Caltrans employee Arturo Reyes Torres" ~ "Arturo Reyes Torres",
+      shooter_name == "Ex-con Hastings Arthur Wise" ~ "Arthur Wise",
+      shooter_name == "Fired city park employee Clifton McCree" ~ "Clifton McCree",
+      shooter_name == "Disgruntled former metallurgist James Daniel Simpson" ~ "James Daniel Simpson",
+      shooter_name == "Former airman Dean Allen Mellberg" ~ "Dean Allen Mellberg",
+      shooter_name == "Army Sgt. Kenneth Junior French" ~ "Kenneth Junior French",
+      shooter_name == "Failed businessman Gian Luigi Ferri" ~ "Gian Luigi Ferri",
+      shooter_name == "Former Lindhurst High School student Eric Houston" ~ "Eric Houston",
+      shooter_name == "Former ESL Incorporated employee Richard Farley" ~ "Richard Farley",
+      shooter_name == "Former graduate student Gang Lu" ~ "Gang Lu",
+      shooter_name == "Postal worker Patrick Sherrill" ~ "Patrick Sherrill",
+      shooter_name == "Retired librarian William Cruse" ~ "William Cruse",
+      shooter_name == "Laid-off postal worker Thomas McIlvane" ~ "Thomas McIlvane",
+      shooter_name == "Junior high school teacher Carl Robert Brown" ~ "Carl Robert Brown",
+      TRUE                                 ~ shooter_name))
+```
+
+Made a shooter's names column and moved all summary column to the end.
+
+```{r shooter_first_last_name_columns, echo = FALSE}
+
+mother_jones$shooter_last_name <- str_extract(mother_jones$shooter_name,"\\w+$") 
+mother_jones$shooter_first_name <- word(mother_jones$shooter_name, 1) 
+mother_jones <- mother_jones %>%
+  relocate(shooter_last_name, .before = shooter_name) %>%
+  relocate(shooter_first_name, .before = shooter_name) %>%
+  select(-c(shooter_name)) 
+```
+
+```{r updated_two_shooted, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(shooter_first_name = case_when(
+    shooter_first_name == "David" ~ "David & Francine",
+    shooter_first_name == "Syed"  ~ "Syed & Tashfeen",
+    TRUE                         ~ shooter_first_name )) %>%
+  mutate(shooter_last_name = case_when(
+    shooter_last_name == "Farook"   ~ "Farook & Malik",
+    shooter_last_name == "Anderson" ~ "Anderson & Graham",
+    TRUE                           ~ shooter_last_name ))
+```
+
+```{r city_state, echo = FALSE}
+mother_jones <- mother_jones %>%
+  separate(col=location, into=c('city', 'state'), sep=', ') 
+```
+
+Clean up values in the gender column
+```{r clean_up_levels_within_columns, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(gender = case_when(
+    gender %in% c("F", "Female") ~ "Female",
+    gender %in% c("M", "Male") ~ "Male",
+    gender %in% c("Male & Female") ~ "Male & Female"
+  ))
+
+mother_jones <- mother_jones %>%
+    mutate(
+    location_type = case_when(
+      location_type == "workplace" ~ "Workplace",
+      location_type == "religious" ~ "Religious",
+      TRUE            ~ location_type
+    )  
+   )
+
+mother_jones <- mother_jones %>%
+  mutate(
+    weapons_obtained_legally = case_when(
+      weapons_obtained_legally == "yes"                             ~ "Yes",
+      weapons_obtained_legally == 'Yes ("some of the weapons were purchased legally and some of them may not have been")' ~ "Some",
+      weapons_obtained_legally == "Kelley passed federal criminal background checks; the US Air Force failed to provide information on his criminal history to the FBI"                                                                   ~ "Unknown",  
+      TRUE            ~ weapons_obtained_legally
+    )  
+  )
+
+mother_jones$location_type <- gsub("[\r\n]", "", mother_jones$location_type)
+
+mother_jones <- mother_jones %>%
+  mutate(
+    race = case_when(
+      race == "white" ~ "White",
+      race == "black" ~ "Black",
+      TRUE            ~ race
+    )  
+  )
+
+mother_jones$weapons_obtained_legally <- gsub("[\r\n]", "", mother_jones$weapons_obtained_legally)
+```
+
+```{r age_shooter_fill_missing_values, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(
+    age_of_shooter = as.character(age_of_shooter),
+    age_of_shooter = case_when(
+    case == "Tulsa medical center shooting"            ~ "45",
+    case == "Orange office complex shooting"           ~ "44",
+    case == "Jersey City kosher market shooting"       ~ "47 & 50",
+    TRUE                                               ~ age_of_shooter
+    )
+  )
+```
+
+There are two rows where a female and a male were involved. I filled in one with "47 & 50", which is information I took from the summary column. The other row, where two shooters were involved, however, is filled in with age 28. Does that mean both shooters were 28? Or is there a mistake?
+
+```{r bar_gender, echo = FALSE}
+ggplot(data = mother_jones, mapping = aes(x = gender)) +
+  geom_bar() +
+  labs(x = "Gender", y = "Frequency", title = "Frequency of Male and Female Perpetrators")
+
+mother_jones %>%
+  count(gender)
+```
+
+It is obvious here that the male frequency is much higher in this data set. This shows me that males are more likely to be perpetrators in a mass shooting. From this graph, I know that I should not compare females and males in any of my analyses, as it will not be efficient since there are only three females. 
+
+Frequency of men and women before and after 21st century
+```{r by_century, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(by_century = case_when(year < 2000               ~ "20th Century", 
+                                year >= 2000              ~ "21st Century"))  
+mother_jones %>% 
+  count(by_century)
+```
+
+```{r distribution_year, echo = FALSE}
+mother_jones %>%
+    mutate(year = as.datetime(year)) %>%
+ggplot(data = mother_jones, mapping = aes(x = year)) +
+  geom_histogram(binwidth = 3) +
+  labs(title = "Distribution of Year", x = NULL, y = "Frequency")
+
+mother_jones %>%
+  count(year) %>%
+  ggplot(aes(x = year, y = n, group = 1)) +
+  geom_line() + 
+  labs(x = "Year", y = "Frequency", title = "Distribution of Mass Shootings Throughout the Years")
+```
+I expected that the count for the 20th century would be higher because the 20th century ended, and we are only 22 years into the 21st century. But now, looking at the distribution, it looks like the first recorded year was 1980, so that is only the last 20 years of the 20th century. So, the years from both centuries are equal, and it makes sense that the count is not significantly higher for the 20th century. The chart above is very skewed to the left, meaning that there have been more mass shooting events in the first 20 years of the 21st century than in the last 20 years of the 21st century. 
+
+The second chart shows more clearly the increase throughout the years. Before the year 2000, the slope of the number of mass shootings looked much lower than after the year 2000. After the year 2000, the number of mass shootings increased much faster (the slope looks higher than before 2000).
+
+```{r age_of_shooter_summary_statistics, echo = FALSE}
+mother_jones %>% 
+  mutate(age_of_shooter = as.numeric(age_of_shooter)) %>%
+  summarize(Mean = mean(age_of_shooter, na.rm = TRUE),
+            Maximum = max(age_of_shooter, na.rm = TRUE),
+            Minimum = min(age_of_shooter, na.rm = TRUE),
+            Median = median(age_of_shooter, na.rm = TRUE),
+            SD = sd(age_of_shooter, na.rm = TRUE),
+            )
+
+mother_jones %>% 
+  mutate(age_of_shooter = as.numeric(age_of_shooter)) %>%
+ggplot(mother_jones, mapping = aes(x = fatalities, y = race)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Shooter's Age", subtitle = "Value with '47 & 50' is excluded", x = "Age of Shooter") 
+
+mother_jones %>% 
+  mutate(age_of_shooter = as.numeric(age_of_shooter)) %>%
+ggplot(mother_jones, mapping = aes(x = age_of_shooter)) +
+  geom_histogram(bins = 15) +
+  labs(title = "Distribution of Shooter's Age", subtitle = "Value with '47 & 50' is excluded", x = "Age of Shooter", y = "Frequency") 
+```
+
+The median and the mean are very close, which is why the box plots are symmetrical. Most perpetrators are more likely to be around the age of 30, and a few are towards the maximum age of 70 or the minimum age of 11 because of how the ages are distributed. The median and mean are about the same. The histogram shows a bimodal graph. It is shocking that an 11-year-old killed more than 3 or 4 people.
+
+```{r us_map, echo = FALSE}
+ggplot(mother_jones, mapping = aes(x = longitude, y = latitude)) +
+  geom_point() +
+  labs(x = "Longitude",
+        y = "Latitude",
+       title = "Visualization of Mass Shootings Locations accross the U.S.")
+```
+More shootings happen around the major states, especially the states that are on the border or the coast. This makes sense because most of the major states are towards the border. These states are more populated than the ones in the middle. 
+
+```{r state_distribution, echo = FALSE}
+mother_jones %>%
+  mutate(state = fct_infreq(state)) %>%
+ggplot(mother_jones, mapping = aes(y = state)) +
+  geom_bar() +
+  labs(title = "Distribution of States", y = NULL, x = "Frequency")
+```
+California has the highest count of mass shooting, and Utah has the lowest count of mass shooting. The top three are California, Florida, and Texas.
+
+```{r distribution_race, echo = FALSE}
+mother_jones %>%
+  mutate(race = fct_infreq(race)) %>%
+ggplot(mother_jones, mapping = aes(x = race)) +
+  geom_bar() + 
+  labs(title = "Distribution of Perpetrator's Race", y = "Frequency", x = "Race of Shooter")
+```
+The highest number of perpetrators were white, and the lowest number were Native Americans. This makes sense because the majority of people are white, and Native Americans are one of the minorities in this country. 
+
+```{r proportion_type_of_location_race, echo = FALSE}
+mother_jones %>% 
+  arrange(desc(race)) %>%
+ggplot(mother_jones, mapping = aes(y = race, fill = location_type)) +
+  geom_bar(position = "fill") +
+  labs(title = "Proportion of Type of Location by Race", y = NULL, x = "Proportion of Shooters", fill = "Location Type") + 
+  scale_fill_viridis_d()
+```
+The proportion of school shootings is the highest for Native Americans.
+
+```{r proportion_weapons_obtained_legally_race, echo = FALSE}
+mother_jones %>%
+  mutate(race = fct_infreq(race)) %>%
+ggplot(mother_jones, mapping = aes(y = race, fill = weapons_obtained_legally)) +
+  geom_bar(position = "fill") + 
+  labs(title = "Proportion of Legally Obtained Weapons by Race", y = NULL, x = "Proportion", subtitle = "One row with two shooters #is removed.", fill = "Weapons Obtained Legally") 
+```
+Native Americans have the highest proportion of illegally obtained weapons. Latinos have the highest probability of legally obtaining weapons.
+
+Cleaned up the weapon_type variable:
+```{r weapon_type_consistency, echo = FALSE}
+mother_jones %>%
+  count(weapon_type)
+
+mother_jones$weapon_type <- gsub("[\r\n]", "", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("One", "", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("one", "", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("Two", "2", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("two", "2", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("Three", "3", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("three", "3", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("five", "5", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("Five", "5", mother_jones$weapon_type)
+
+mother_jones %>%
+  count(weapon_type)
+```
+
+```{r weapon_type_update, echo = FALSE}
+mother_jones <- mother_jones %>%
+    mutate(weapon_type_update = case_when(
+      weapon_type == "handgun" ~ "Handgun",
+      weapon_type == "semiautomatic handguns" ~ "Semiautomatic handgun",
+      weapon_type == "shotguns" ~ "Shotgun",
+      weapon_type == "shotgun" ~ "Shotgun",
+      weapon_type == "Semiautomatic rifle, semiautomatic handguns"      ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifle; semiautomatic handguns"      ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifle; semiautomatic handgun"       ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifles; semiautomatic handgun"      ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifle and semiautomatic handgun"    ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifles" ~ "Semiautomatic rifle",
+      weapon_type == "semiautomatic rifle" ~ "Semiautomatic rifle",
+      weapon_type == "semiautomatic rifle, semiautomatic handgun; tactical vest" ~ "Semiautomatic rifle, semiautomatic handgun", 
+      weapon_type == "semiautomatic rifle; shotgun"                     ~ "Semiautomatic rifle, shotgun",
+      weapon_type == "9mm semi-automatic handgun"                       ~ "Semiautomatic handgun",
+      weapon_type == " rifle"                                            ~ "Rifle",
+      weapon_type == " shotgun"                                          ~ "Shotgun",
+      weapon_type == "3 semi-automatic handguns and 2 hunting knives"    ~ "3 semiautomatic handguns, 2 hunting knives",
+      weapon_type == "shotgun; .38 revolver"                             ~ "Shotgun, revolver",
+      weapon_type == "handgun, shotgun"                                  ~ "Handgun, shotgun",
+      weapon_type == "semiautomatic handgun, rifle, shotgun"             ~ "Semiautomatic handgun, rifle, shotgun",
+      weapon_type == " revolver,  shotgun"                                 ~ "Shotgun, revolver",
+      weapon_type == "Assault rifle, high capacity magazines, antique handgun"       ~ "Rifle (assault), handgun",            
+      weapon_type == " revolver"                                 ~ "Revolver",
+      weapon_type == " rifle (assault)"                          ~ "Rifle (assault)",
+      weapon_type == " rifle,  revolver"                           ~ "Rifle, revolver",
+      weapon_type == " rifle,  revolver,  shotgun"                          ~ "Rifle, revolver, shotgun",
+      weapon_type == " rifle,  shotgun"                          ~ "Rifle, shotgun",
+      weapon_type == " rifle, 2 shotguns"                          ~ "Rifle, 2 shotguns",
+      weapon_type == "2 assault rifles and 2 semi-automatic pistols were used in the attack. Police found a remote controlled explosive device at the scene of the crime. At the home were 12 pipe bombs, 2,500 rounds for the AR-15 variants, 2,000 rounds for the pistols, and several hundred for a .22 calibre rifle. In the suspects' car were an additional 1,400 rounds for the rifles and 200 for the handguns."                          ~ "2 rifles (assult), 2 semiautomatic pistols",
+      weapon_type == "2 assault rifles; semiautomatic handgun"                          ~ "2 rifles (assult),  semiautomatic handgun", 
+      weapon_type == " semiautomatic handgun, 2 rifles,  derringer,  shotgun"               ~ "Semiautomatic handgun, 2 rifles, derringer, shotgun", 
+      weapon_type == " semiautomatic handgun (assault),  rifle (assault), 2 shotguns" ~ "Semiautomatic handgun (assault), rifle (assault), 2 shotguns", 
+      weapon_type == " rifle, 2 shotguns"                          ~ "Rifle, 2 shotguns",
+      weapon_type == " semiautomatic handgun,  revolver"                          ~ "Semiautomatic handgun, revolver",
+      weapon_type == " semiautomatic handgun,  rifle (assault)"                          ~ "Semiautomatic handgun, rifle (assault)",
+      weapon_type == " semiautomatic handgun,  rifle (assault),  shotgun"                          ~ "Semiautomatic handgun, rifle (assault), shotgun",
+      weapon_type == " semiautomatic handgun,  rifle,  shotgun"                          ~ "Semiautomatic handgun, rifle, shotgun",
+      weapon_type == "Sawed-off shotgun, 2 boxes of shells; also a .45-caliber handgun taken from a security guard he shot at the scene."                          ~ "Handgun, shotgun",
+      weapon_type == " semiautomatic handgun" ~ "Semiautomatic handgun",
+      weapon_type ==  "semiautomatic handgun" ~ "Semiautomatic handgun",
+      weapon_type ==  "5 pistols,  rifle, 5 magazines of ammunition" ~ "5 pistols, rifle",
+      weapon_type ==  "2 handguns and a rifle" ~ "2 handguns, rifle",
+      weapon_type ==  "2 handguns and a butcher knife" ~ "2 handguns, butcher knife",
+      weapon_type ==  "2 semiautomatic rifles;  semiautomatic handgun" ~ "2 semiautomatic rifles, semiautomatic handgun",
+      weapon_type ==  '23 firearms, mostly rifles; including scopes, and 2 modified for "fully automatic" firing; 2 were mounted on tripods' ~ "23 firearms, mostly rifles",
+      TRUE                                                              ~ weapon_type
+    )) 
+```
+
+```{r weapon_type_update_count, echo = FALSE}
+mother_jones %>%
+  count(weapon_type_update) %>%
+  arrange(desc(n)) 
+```
+
+I took out the vest from one of the levels because it is not a weapon. I decided to remove the 9mm from the shotgun and .38 from revolver. I thought it was unnecessary as they are both specializations of these types of gun. A 9mm shotgun is the same as a shotgun. One is made before the other, so one is more specialized, kind of like a car model and make. I chose to remove ammunition magazines because they are simply storage for ammunition that is either inside or attached to a gun. All of the added unnecessary information had to be taken out because it causes the column to have too many levels because r thinks that a 9mm shotgun and a shotgun are different types of guns.
+
+Looking at the count after all the wrangling, I can see that a single semiautomatic handgun was used the most in a mass shooting. This is not counting the times a semiautomatic gun was used along with another weapon.

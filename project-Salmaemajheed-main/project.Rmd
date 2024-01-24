@@ -1,0 +1,642 @@
+---
+title: "Total Victims Analysis"
+author: "Salma Emjaheed"
+date: "12/06/2022"
+output:
+  html_document: default
+  github_document: default
+---
+```{r load-pkg, echo = FALSE, include=FALSE}
+#knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages("stringr")
+#install.packages("lubridate")
+#install.packages("devtools")
+#install.packages("GGally")
+#install.packages("readxl")
+#install.packages("tidyverse")
+#install.packages("dplyr")
+#install.packages("broom")
+#install.packages("openintro")
+#install.packages("qqplotr")
+```
+
+```{r echo = FALSE, include=FALSE}
+library(stringr)
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(broom)
+library(openintro)
+library(devtools)
+library(GGally)
+library(qqplotr)
+```
+
+
+
+```{r echo = FALSE, include=FALSE}
+mother_jones <- read_excel("data/Mother Jones - Mass Shootings Database, 1982 - 2022.xlsx", na = "-")
+names(mother_jones)
+regions <- read.csv("data/us census bureau regions and divisions.csv")
+
+```
+
+<b>Introduction:<b>
+
+  This data set came from Mother Jones researchers on four decades of mass shooting cases, from 1982 to 2022, including information on the attackers’ profiles, the types of weapons they used, and the number of victims they were injured and killed. Each row represents a mass shooting event. The values in the sources variable in the data link to websites that have news or more information about the mass shooting; this is how it was collected. For this data set, a mass shooting is defined as a shooting that occurred in a public place or a place filled with a crowd, such as private property where strangers (public crowd) were in it. Each case leading up to year 2012 was of a mass shooting where at least four people died. And the cases from the years 2013 to 2022 are of mass shootings where at least three people died to match the federal definition of what a mass shooting is. For each case, only one shooter was involved, except in two cases where two shooters were involved. There are some spree killings, as opposed to mass shootings, where the shootings happen in different locations but over a short period and by the same perpetrator. In many cases, the perpetrators were killed or wounded, either by themselves or someone else; in this data set, they are not counted under the variable total victims. The variables are case, location, date, summary, fatalities, injured, total victims, prior signs of mental health issues, mental health details, weapons obtained illegally, where the weapons were obtained, weapon type, weapon details, race, gender, latitude, longitude, type, and year. I want to take a look at how the demographics (age, race, and gender) of the perpetrators changed over the years, starting in 1982. 
+
+Research question: What factors can predict total victims in a mass shooting? I assumed that prior signs of mental health issues is a great predictor for total victims. 
+
+<b>Data Wrangling:<b>
+
+  First, I renamed location...8 and location...2 to location_type and location. This dataset had two columns named location, so r named them location ...8 and location...2. 
+
+  I added a new data set called regions and inner joined it with the mother Jones data set to use regions to predict total victims instead of states. The regions dataset had two unnecessary columns, which I removed with the select function.
+
+  I also separated the location column values, which had city and state separated by a comma. I used the separate() function, creating two columns: state and city. The gender column had five levels “F,” “M,” “Female,” “Male,” and “Female & Male.” I cleaned that up with mutate and case_when, creating only three levels. 
+
+  The location type column had two “workplace” levels, one with an uppercase "W" and one with a lowercase "w." Also, with the column race, the black and white categories had the same problem, and I fixed it the same way by case_when and made the level names start with the same letter case. 
+
+  For the weapon's legally obtained, I changed all the "yes" to "Yes." I also changed 'Yes ("some of the weapons were purchased legally and some of them may not have been")' to "Yes." I chose yes instead of some. Because with some, it would create an extra level. I did not want to create an extra category because I wanted to use this variable to predict total victims later. “Yes” seemed the most logical because it had "Yes" before the parenthesis. I also mutated "Kelley passed federal criminal background checks; the US Air Force failed to provide information on his criminal history to the FBI" to NA. There were multiple new line characters within different levels, which I removed as well. 
+
+  Also, for the race column, one value was “unclear,” so I grouped that with NA. Because if it is not clear, we do not know the race of the person, so it would not be available. I did the same with prior signs of mental health issues, where I put TBD, Unclear, and Unknown under NA to reduce the levels. 
+
+  For the shooter age column, there were three NAs. I found their ages in the details columns, so I mutated them and changed those NA to the correct age of the shooter. 
+
+  There were two rows where a female and a male were involved. I filled in one with "47 & 50", which is information I took from the summary column. The other row, where two shooters were involved, however, is filled in with age 28. Does that mean both shooters were 28? Or is there a mistake? 
+
+  For total victim variables and other variables necessary for this analysis, I made the ones I assumed to be numeric as numeric and not categorical.
+
+  I reduced the levels in multiple categorical variables. For example, some categories had NAs and Unknowns. I put these levels together as one level under NAs.
+
+
+```{r change_coloumn_names_location, echo = FALSE, include = FALSE}
+mother_jones <- mother_jones %>%
+  rename (
+    location_type = 'location...8',
+    location = 'location...2'
+  )
+
+```
+
+```{r shooter_name_created, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(details = summary1 <- summary) %>%
+  separate(col=summary, into = 'shooter_name', sep=', ') %>%
+  mutate(shooter_name = case_when(
+      location == "Smithsburg, Maryland" ~ NA_character_,
+      location == "Sacramento, California" ~ NA_character_, 
+      shooter_name == 'Suspected gunman Robert "Bobby" Crimo' ~ 'Robert "Bobby" Crimo',
+      shooter_name == "Army veteran Albert Cheung Wong"~ "Albert Cheung Wong",
+      shooter_name == "Syed Rizwan Farook left a Christmas party held at Inland Regional Center" ~ "Syed Rizwan Farook",
+      location == "Roseburg, Oregon" ~ "Chris Harper Mercer",
+      shooter_name == "Kuwaiti-born Mohammod Youssuf Abdulazeez" ~ "Mohammod Youssuf Abdulazeez",
+      shooter_name == "Army Specialist Ivan Lopez" ~ "Ivan Lopez",
+      shooter_name == "U.S. Army veteran Wade Michael Page" ~ "Wade Michael Page",
+      shooter_name == "Army psychiatrist Nidal Malik Hasan" ~ "Nidal Malik Hasan",
+      shooter_name == "Disgruntled employee Wesley Neal Higdon" ~ "Wesley Neal Higdon",
+      shooter_name == "Off-duty sheriff's deputy Tyler Peterson" ~ "Tyler Peterson",
+      shooter_name == "Virginia Tech student Seung-Hui Cho" ~ "Seung-Hui Cho",
+      shooter_name == "Former postal worker Jennifer Sanmarco" ~ "Jennifer Sanmarco",
+      shooter_name == "Living Church of God member Terry Michael Ratzmann" ~ "Terry Michael Ratzmann",
+      shooter_name == "Assembly line worker Douglas Williams" ~ "Douglas Williams",
+      shooter_name == "Fired employee William D. Baker" ~ "William D. Baker",
+      shooter_name == "Hotel employee Silvio Leyva" ~ "Silvio Leyva",
+      shooter_name == "Day trader Mark O. Barton" ~ "Mark O. Barton",
+      shooter_name == "After he was expelled for having a gun in his locker" ~ "Kipland P.Kinkel",
+      shooter_name == "Lottery worker Matthew Beck" ~ "Matthew Beck",
+      shooter_name == "Former Caltrans employee Arturo Reyes Torres" ~ "Arturo Reyes Torres",
+      shooter_name == "Ex-con Hastings Arthur Wise" ~ "Arthur Wise",
+      shooter_name == "Fired city park employee Clifton McCree" ~ "Clifton McCree",
+      shooter_name == "Disgruntled former metallurgist James Daniel Simpson" ~ "James Daniel Simpson",
+      shooter_name == "Former airman Dean Allen Mellberg" ~ "Dean Allen Mellberg",
+      shooter_name == "Army Sgt. Kenneth Junior French" ~ "Kenneth Junior French",
+      shooter_name == "Failed businessman Gian Luigi Ferri" ~ "Gian Luigi Ferri",
+      shooter_name == "Former Lindhurst High School student Eric Houston" ~ "Eric Houston",
+      shooter_name == "Former ESL Incorporated employee Richard Farley" ~ "Richard Farley",
+      shooter_name == "Former graduate student Gang Lu" ~ "Gang Lu",
+      shooter_name == "Postal worker Patrick Sherrill" ~ "Patrick Sherrill",
+      shooter_name == "Retired librarian William Cruse" ~ "William Cruse",
+      shooter_name == "Laid-off postal worker Thomas McIlvane" ~ "Thomas McIlvane",
+      shooter_name == "Junior high school teacher Carl Robert Brown" ~ "Carl Robert Brown",
+      TRUE                                 ~ shooter_name))
+```
+
+```{r shooter_first_last_name_columns, echo = FALSE}
+mother_jones$shooter_last_name <- str_extract(mother_jones$shooter_name,"\\w+$") 
+mother_jones$shooter_first_name <- word(mother_jones$shooter_name, 1) 
+mother_jones <- mother_jones %>%
+  relocate(shooter_last_name, .before = shooter_name) %>%
+  relocate(shooter_first_name, .before = shooter_name) %>%
+  select(-c(shooter_name)) 
+```
+
+```{r updated_two_shooted, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(shooter_first_name = case_when(
+    shooter_first_name == "David" ~ "David & Francine",
+    shooter_first_name == "Syed"  ~ "Syed & Tashfeen",
+    TRUE                         ~ shooter_first_name )) %>%
+  mutate(shooter_last_name = case_when(
+    shooter_last_name == "Farook"   ~ "Farook & Malik",
+    shooter_last_name == "Anderson" ~ "Anderson & Graham",
+    TRUE                           ~ shooter_last_name ))
+```
+
+```{r remove_unnecessary_columns, echo = FALSE}
+regions <- regions %>%
+   select(-c(State.Code, Division))
+mother_jones <- mother_jones %>%
+   select(-c(sources, sources_additional_age, mental_health_sources))
+```
+
+```{r city_state, echo = FALSE}
+mother_jones <- mother_jones %>%
+  separate(col=location, into=c('city', 'state'), sep=', ') 
+```
+
+```{r clean_up_levels_within_gender, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(gender = case_when(
+    gender %in% c("F", "Female") ~ "Female",
+    gender %in% c("M", "Male") ~ "Male",
+    gender %in% c("Male & Female") ~ "Male & Female"
+  ))
+```
+
+```{r clean_up_levels_within_location_type, echo = FALSE}
+mother_jones <- mother_jones %>%
+    mutate(
+    location_type = case_when(
+      location_type == "workplace" ~ "Workplace",
+      location_type == "religious" ~ "Religious",
+      TRUE            ~ location_type
+    )  
+   )
+```
+
+```{r clean_up_levels_within_weapons_obtained_legally, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(
+    weapons_obtained_legally = case_when(
+      weapons_obtained_legally == "yes"                             ~ "Yes",
+      weapons_obtained_legally == 'Yes ("some of the weapons were purchased legally and some of them may not have been")' ~ "Yes",
+      weapons_obtained_legally == "Kelley passed federal criminal background checks; the US Air Force failed to provide information on his criminal history to the FBI"                                   ~ as.character(NA),  
+      weapons_obtained_legally == "TBD"                             ~ as.character(NA),
+      weapons_obtained_legally == "Unknown"                             ~ as.character(NA),
+      TRUE                                             ~ weapons_obtained_legally
+    )  
+  )
+```
+
+```{r remove_new_line_characters, echo = FALSE}
+mother_jones$location_type <- gsub("[\r\n]", "", mother_jones$location_type)
+mother_jones$weapons_obtained_legally <- gsub("[\r\n]", "", mother_jones$weapons_obtained_legally)
+```
+
+```{r clean_up_levels_within_race, echo = FALSE}
+
+mother_jones <- mother_jones %>%
+  mutate(
+    race = case_when(
+      race == "white" ~ "White",
+      race == "black" ~ "Black",
+      race == "unclear" ~ as.character(NA),
+      TRUE            ~ race
+    )  
+  )
+```
+
+```{r clean_up_levels_within_prior_signs_mental_health_issues, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(
+      prior_signs_mental_health_issues = case_when(
+      prior_signs_mental_health_issues == "yes" ~ "Yes",
+      prior_signs_mental_health_issues == "Unknown" ~ as.character(NA),
+      prior_signs_mental_health_issues == "Unclear" ~ as.character(NA),
+      prior_signs_mental_health_issues == "TBD" ~ as.character(NA),
+      TRUE            ~ prior_signs_mental_health_issues
+    )  
+  )
+```
+
+```{r age_shooter_fill_missing_values, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(
+    age_of_shooter = as.character(age_of_shooter),
+    age_of_shooter = case_when(
+    case == "Tulsa medical center shooting"            ~ "45",
+    case == "Orange office complex shooting"           ~ "44",
+    case == "Jersey City kosher market shooting"       ~ "47 & 50",
+    TRUE                                               ~ age_of_shooter
+    )
+  )
+```
+
+```{r weapon_type_consistency, echo = FALSE}
+mother_jones$weapon_type <- gsub("[\r\n]", "", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("One", "", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("one", "", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("Two", "2", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("two", "2", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("Three", "3", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("three", "3", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("five", "5", mother_jones$weapon_type)
+mother_jones$weapon_type <- gsub("Five", "5", mother_jones$weapon_type)
+```
+
+```{r weapon_type_update, echo = FALSE}
+mother_jones <- mother_jones %>%
+    mutate(weapon_type_update = case_when(
+      weapon_type == "handgun" ~ "Handgun",
+      weapon_type == "semiautomatic handguns" ~ "Semiautomatic handgun",
+      weapon_type == "shotguns" ~ "Shotgun",
+      weapon_type == "shotgun" ~ "Shotgun",
+      weapon_type == "Semiautomatic rifle, semiautomatic handguns"      ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifle; semiautomatic handguns"      ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifle; semiautomatic handgun"       ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifles; semiautomatic handgun"      ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifle and semiautomatic handgun"    ~ "Semiautomatic rifle, semiautomatic handgun",
+      weapon_type == "semiautomatic rifles" ~ "Semiautomatic rifle",
+      weapon_type == "semiautomatic rifle" ~ "Semiautomatic rifle",
+      weapon_type == "semiautomatic rifle, semiautomatic handgun; tactical vest" ~ "Semiautomatic rifle, semiautomatic handgun", 
+      weapon_type == "semiautomatic rifle; shotgun"                     ~ "Semiautomatic rifle, shotgun",
+      weapon_type == "9mm semi-automatic handgun"                       ~ "Semiautomatic handgun",
+      weapon_type == " rifle"                                            ~ "Rifle",
+      weapon_type == " shotgun"                                          ~ "Shotgun",
+      weapon_type == "3 semi-automatic handguns and 2 hunting knives"    ~ "3 semiautomatic handguns, 2 hunting knives",
+      weapon_type == "shotgun; .38 revolver"                             ~ "Shotgun, revolver",
+      weapon_type == "handgun, shotgun"                                  ~ "Handgun, shotgun",
+      weapon_type == "semiautomatic handgun, rifle, shotgun"             ~ "Semiautomatic handgun, rifle, shotgun",
+      weapon_type == " revolver,  shotgun"                                 ~ "Shotgun, revolver",
+      weapon_type == "Assault rifle, high capacity magazines, antique handgun"       ~ "Rifle (assault), handgun",            
+      weapon_type == " revolver"                                 ~ "Revolver",
+      weapon_type == " rifle (assault)"                          ~ "Rifle (assault)",
+      weapon_type == " rifle,  revolver"                           ~ "Rifle, revolver",
+      weapon_type == " rifle,  revolver,  shotgun"                          ~ "Rifle, revolver, shotgun",
+      weapon_type == " rifle,  shotgun"                          ~ "Rifle, shotgun",
+      weapon_type == " rifle, 2 shotguns"                          ~ "Rifle, 2 shotguns",
+      weapon_type == "2 assault rifles and 2 semi-automatic pistols were used in the attack. Police found a remote controlled explosive device at the scene of the crime. At the home were 12 pipe bombs, 2,500 rounds for the AR-15 variants, 2,000 rounds for the pistols, and several hundred for a .22 calibre rifle. In the suspects' car were an additional 1,400 rounds for the rifles and 200 for the handguns."                          ~ "2 rifles (assult), 2 semiautomatic pistols",
+      weapon_type == "2 assault rifles; semiautomatic handgun"                          ~ "2 rifles (assult),  semiautomatic handgun", 
+      weapon_type == " semiautomatic handgun, 2 rifles,  derringer,  shotgun"               ~ "Semiautomatic handgun, 2 rifles, derringer, shotgun", 
+      weapon_type == " semiautomatic handgun (assault),  rifle (assault), 2 shotguns" ~ "Semiautomatic handgun (assault), rifle (assault), 2 shotguns", 
+      weapon_type == " rifle, 2 shotguns"                          ~ "Rifle, 2 shotguns",
+      weapon_type == " semiautomatic handgun,  revolver"                          ~ "Semiautomatic handgun, revolver",
+      weapon_type == " semiautomatic handgun,  rifle (assault)"                          ~ "Semiautomatic handgun, rifle (assault)",
+      weapon_type == " semiautomatic handgun,  rifle (assault),  shotgun"                          ~ "Semiautomatic handgun, rifle (assault), shotgun",
+      weapon_type == " semiautomatic handgun,  rifle,  shotgun"                          ~ "Semiautomatic handgun, rifle, shotgun",
+      weapon_type == "Sawed-off shotgun, 2 boxes of shells; also a .45-caliber handgun taken from a security guard he shot at the scene."                          ~ "Handgun, shotgun",
+      weapon_type == " semiautomatic handgun" ~ "Semiautomatic handgun",
+      weapon_type ==  "semiautomatic handgun" ~ "Semiautomatic handgun",
+      weapon_type ==  "5 pistols,  rifle, 5 magazines of ammunition" ~ "5 pistols, rifle",
+      weapon_type ==  "2 handguns and a rifle" ~ "2 handguns, rifle",
+      weapon_type ==  "2 handguns and a butcher knife" ~ "2 handguns, butcher knife",
+      weapon_type ==  "2 semiautomatic rifles;  semiautomatic handgun" ~ "2 semiautomatic rifles, semiautomatic handgun",
+      weapon_type ==  '23 firearms, mostly rifles; including scopes, and 2 modified for "fully automatic" firing; 2 were mounted on tripods' ~ "23 firearms, mostly rifles",
+      TRUE                                                              ~ weapon_type
+    )) 
+```
+
+```{r year_mutate, echo = FALSE}
+mother_jones$year <- as.character(as.numeric(mother_jones$year) - 1980)
+mother_jones$year <- as.numeric(as.character(mother_jones$year))
+```
+
+```{r not_needed_columns, echo = FALSE}
+mother_jones <- mother_jones %>%
+  inner_join(regions, by = c("state" = "State"))
+```
+
+```{r make_numeric, echo = FALSE, include = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(age_of_shooter = as.numeric(age_of_shooter)) %>%
+  mutate(total_victims = as.numeric(total_victims)) %>%
+  mutate(injured = as.numeric(injured)) 
+```
+
+<b>EDA and Data Visualizations Explanations:<b>
+
+  This data set shows that only three female shooters were involved in mass shootings, and the rest were men. I tried to use it as a predictor, but the p-value was greater than .05. Most of them were men, which initially made me think it will not serve well as a predictor. I filtered out where it was both females and males involved in the same case because I felt that the absence of these columns will not change the results since I am filtering out an equal ratio of females and males. This also decreased the levels. But, it did not serve as a good predictor because the r-squared did not increase. Instead, it remained the same when I added it as the third predictor, along with the year and age of the shooter. 
+
+  After removing the outliers and looking at the summary statistics of the total victims, the maximum number of total victims is 100. When I initially looked at the distribution of total victims, I saw that outlier and thought it was necessary to remove it because of how far it was from the maximum. The minimum is three, which looks accurate as this data set is not looking at shootings, where less than 3 died. The data is very rightly skewed, which is a good thing because it means that the number of total victims is usually on the lower side of the spectrum here in the U.S.
+
+  For the age of the shooter column, there are two columns where two shooters were involved in the mass shootings case. One of them has both shooter’s ages, noted as “47 & 50” because it has a “&” symbol where it turns all the values in the column into strings. Because I mutated that entire column to be in the numeric form before I moved on to Exploratory Data Analysis, any graph that I created excluded 47 & 50. 
+
+  For the summary statistics for the age of the shooter, the youngest perpetrator is 11 years old. The oldest is 70. The median and the mean are very close. They are both around 33, suggesting that the distribution of age is approximately symmetrical. 
+
+  Finally, I wanted to show the progression of mass shooting cases throughout the years as the variable years served as a good predictor for total victims. 
+  
+```{r bar_gender, echo = FALSE, include=FALSE}
+mother_jones <- mother_jones %>%
+  filter(gender != "Male & Female")
+
+ggplot(data = mother_jones, mapping = aes(x = gender)) +
+  geom_bar() +
+  labs(x = "Gender", y = "Frequency", title = "Frequency of Male and Female Perpetrators")
+
+mother_jones %>%
+  count(gender)
+```
+
+```{r distribution_summary_stat_victims, echo = FALSE}
+mother_jones <- mother_jones %>% 
+  filter(total_victims < 600)
+
+ggplot(data = mother_jones, mapping = aes(x = total_victims)) +
+  geom_histogram(binwidth = 5) + 
+  labs(x = "Total Victims", y = "Frequency", title = "Distribution of Total Vicitms")
+
+mother_jones %>% 
+  mutate(total_victims = as.numeric(total_victims)) %>%
+  summarize(Mean = mean(total_victims, na.rm = TRUE),
+            Maximum = max(total_victims, na.rm = TRUE),
+            Minimum = min(total_victims, na.rm = TRUE),
+            Median = median(total_victims, na.rm = TRUE),
+            SD = sd(total_victims, na.rm = TRUE),
+            )
+```
+
+```{r distribution_summary_stat_age, echo = FALSE}
+mother_jones %>% 
+  mutate(age_of_shooter = as.numeric(age_of_shooter)) %>%
+ggplot(mother_jones, mapping = aes(x = age_of_shooter)) +
+  geom_histogram(bins = 15) +
+  labs(title = "Distribution of Shooter's Age", subtitle = "Value with '47 & 50' is excluded", x = "Age of Shooter", y = "Frequency")
+
+mother_jones %>% 
+  mutate(age_of_shooter = as.numeric(age_of_shooter)) %>%
+  summarize(Mean = mean(age_of_shooter, na.rm = TRUE),
+            Maximum = max(age_of_shooter, na.rm = TRUE),
+            Minimum = min(age_of_shooter, na.rm = TRUE),
+            Median = median(age_of_shooter, na.rm = TRUE),
+            SD = sd(age_of_shooter, na.rm = TRUE),
+            )
+```
+
+```{r distribution_year, echo = FALSE}
+ggplot(data = mother_jones, mapping = aes(x = year)) +
+  geom_histogram() +
+  labs(title = "Distribution of Year", x = NULL, y = "Frequency")
+
+mother_jones %>%
+  count(year) %>%
+  ggplot(aes(x = year, y = n, group = 1)) +
+  geom_line() + 
+  labs(x = "Year", y = "Frequency", title = "Distribution of Mass Shootings Throughout the Years")
+```
+
+```{r remove_outliers, echo = FALSE}
+mother_jones <- mother_jones %>%
+  filter(total_victims < 80) 
+```
+
+```{r add_log_of_victims_to_dataset, echo = FALSE}
+mother_jones <- mother_jones %>%
+  mutate(total_victims_log = log(total_victims, base = exp(1)))
+```
+
+<b>Statistical Methods:<b>
+
+  Because the data was rightly skewed, I decided to create a new column called total_victims_log, where I took the log of total victims after I had removed the outliers that were above 80 total victims. 
+
+  I wanted to predict the total number of victims using the shooter"s age. The total victims' column had an odd outlier, which was 600, while the number of total victims for the other cases was below 100. Looking at different websites, the numbers that about 58 died and more than 500 were hurt are accurate. I wanted to remove it anyway because it really skews the data, and removing it will not affect the results much because it is one number along with two other outliers, which were above 80. 
+
+  I wanted to see if there are any variables that predict the total number of victims. I started off with the location type. When looking at the boxplots of location type vs. total victims, there was a variation between the boxplots, suggesting that there may be a relationship there. I proceeded to use the lm() function to create a model using location type as a predictor for total victims. The p-values for each category were all higher than .05, indicating that the results are not significant and the null hypothesis was not rejected. There was no association between location type and the number of victims. All the 95% confidence intervals include 0, confirming the hypothesis test. Even after taking the log of total victims, the results were not significant. Similarly with prior signs of mental health issues. After taking the log of total victims, there still seems to be no association between the two variables as the p-value is higher than .05, and the 95% confidence interval includes 0, which confirmed that the null hypothesis is not to be rejected. 
+
+  Between a year and total victims, the p-value was .01, which is less than .05, meaning that there is a correlation between total victims and year. Therefore, we reject the null hypothesis. The 95% confidence interval between -.027 and -.004 does not include 0, confirming the alternative hypothesis. For each additional year, the number of victims increased by a factor of .858 victims. I
+
+  Next, I looked at the age of the shooter. There was a high correlation between the age of the shooter and the total number of victims. The p-value was .007, which is less than .5. Therefore, we reject the null hypothesis. The 95% confidence interval between -.025 and -.004 does not include 0, confirming the alternative hypothesis. For each additional age in years, the number of victims increased by a factor of .986 victims.
+
+  There was also no correlation between region and total victims. All the p-values for each category were higher than .05, which accepts our null hypothesis. The 95% confidence interval for all categories include 0, confirming the null hypothesis.
+There was also no correlation between weapons obtained legally and total victims. The p-value for those who obtained their weapons legally was higher than .05, which accepts our null hypothesis. The 95% confidence interval between -0.347 and .408 includes 0, confirming the null hypothesis.
+
+  I did not look to see if fatalities or injuries can predict total victims because they both add up to total victims, so it would not make sense. 
+  
+  My last step was to combine the year and age of the shooter and used both as predictors of total victims. The p-values were less than .05. This model proved to be the better model because the adjusted r-square went up. 
+
+  Overall, my technique was to manually forward selection, which I described above step by step.
+  
+```{r total_victims_location_type_boxplot, echo = FALSE, include=FALSE}
+ggplot(data = mother_jones, aes(x = location_type, y = total_victims_log)) +
+  geom_boxplot() + 
+  labs(title = "Distribution of Total Victims By Location Type", y = "log(Total Victims)", x = NULL)
+```
+
+```{r model_location_type, echo = FALSE, include=FALSE}
+m_total_victims_location <- lm(total_victims_log ~ location_type, data = mother_jones)
+tidy(m_total_victims_location)
+glance(m_total_victims_location)
+confint(m_total_victims_location)
+```
+```{r location_type_resid, echo = FALSE, include=FALSE}
+augment(m_total_victims_location) %>%
+  ggplot(mapping = aes(sample = .resid)) +
+    stat_qq_point(size = 2, color = "red") + 
+    stat_qq_line(color="green") +
+    xlab("Theoretical Quantiles") + ylab("Sample Quantiles") 
+```
+
+```{r prior_signs_mental_health_issues_victims_boxplots, echo = FALSE, include=FALSE}
+ggplot(data = mother_jones, aes(x = prior_signs_mental_health_issues, y = total_victims_log)) +
+  geom_boxplot() 
+```
+
+```{r prior_signs_mental_health_issues_model, echo = FALSE, include=FALSE}
+m_total_victims_prior_signs_mental_health_issues <- lm(total_victims_log ~ prior_signs_mental_health_issues, data = mother_jones)
+tidy(m_total_victims_prior_signs_mental_health_issues)
+glance(m_total_victims_prior_signs_mental_health_issues)
+confint(m_total_victims_prior_signs_mental_health_issues)
+```
+
+```{r prior_signs_mental_health_issues_resid, echo = FALSE, include=FALSE}
+augment(m_total_victims_prior_signs_mental_health_issues) %>%
+  ggplot(mapping = aes(sample = .resid)) +
+    stat_qq_point(size = 2, color = "red") + 
+    stat_qq_line(color="green") +
+    xlab("Theoretical Quantiles") + ylab("Sample Quantiles") 
+```
+
+
+```{r year_total_victims_point, echo = FALSE}
+ggplot(mother_jones, mapping = aes(x = year, y = total_victims_log)) +
+  geom_point() +      
+  geom_smooth(method = "lm", se = FALSE, col = "blue") + 
+  labs(x = "Year", y = "log(Total Victims)", title = "Year vs. log(Total Victims)")
+```
+```{r year_model, echo = FALSE}
+m_total_victims_year <- lm(total_victims_log ~ year, data = mother_jones)
+tidy(m_total_victims_year)
+confint(m_total_victims_year)
+```
+
+```{r year_resid_plot, echo = FALSE}
+augment(m_total_victims_year) %>%
+ggplot(mapping = aes(x = .fitted, y = .resid)) + 
+  geom_jitter(alpha = .5) + 
+  geom_hline(yintercept = 0, color = "blue", lty = 2) + 
+  labs(x = "Predicted Total Victims", y = "Residuals")
+```
+
+```{r year_resid, echo = FALSE}
+augment(m_total_victims_year) %>%
+  ggplot(mapping = aes(sample = .resid)) +
+    stat_qq_point(size = 2, color = "red") + 
+    stat_qq_line(color="green") +
+    xlab("Theoretical Quantiles") + ylab("Sample Quantiles") 
+
+shapiro.test(augment(m_total_victims_year)$.resid)
+```
+
+```{r resid_distribution_year, echo = FALSE, include=FALSE}
+augment(m_total_victims_year) %>%
+  ggplot(mapping = aes(x = .resid)) +
+    geom_histogram() 
+```
+
+$\widehat{log(totalVictims)} = 33.089 - .0153year$
+
+
+```{r age_of_shooter_victims_box_plot, echo = FALSE}
+ggplot(mother_jones, mapping = aes(x = age_of_shooter, y = total_victims_log)) +
+  geom_point() +      
+  geom_smooth(method = "lm", se = FALSE, col = "blue") + 
+  labs(x = "Age of Shooter", y = "Total Victims", title = "Age of Shooter vs. Total Victims")
+```
+
+```{r age_model, echo = FALSE}
+m_total_victims_age <- lm(total_victims_log ~ age_of_shooter, data = mother_jones)
+tidy(m_total_victims_age)
+confint(m_total_victims_age)
+shapiro.test(augment(m_total_victims_age)$.resid)
+```
+
+```{r age_resid_plot, echo = FALSE}
+augment(m_total_victims_age) %>%
+ggplot(mapping = aes(x = .fitted, y = .resid)) + 
+  geom_jitter(alpha = .5) + 
+  geom_hline(yintercept = 0, color = "blue", lty = 2) + 
+  labs(x = "Predicted Total Victims", y = "Residuals")
+```
+```{r resid_distribution_age, echo = FALSE, include=FALSE}
+augment(m_total_victims_age) %>%
+  ggplot(mapping = aes(x = .resid)) +
+    geom_histogram() 
+```
+
+```{r normal_probability_plot_age, echo = FALSE}
+augment(m_total_victims_age) %>%
+  ggplot(mapping = aes(sample = .resid)) +
+    stat_qq_point(size = 2, color = "red") + 
+    stat_qq_line(color="green") +
+    xlab("Theoretical Quantiles") + ylab("Sample Quantiles") 
+```
+
+Model of age of shooter vs. total victims: $\widehat{log(totalVictims)} = 2.832 - 0.014ageOfShooter$
+
+```{r region_analysis, echo = FALSE, include=FALSE}
+mother_jones %>%
+  select(total_victims_log, Region) %>% 
+  ggpairs() 
+
+ggplot(mother_jones, mapping = aes(x = Region, y = total_victims_log)) +
+  geom_point() +      
+  geom_smooth(method = "lm", se = FALSE, col = "blue") + 
+  labs(x = "Injured", y = "Total Victims", title = "Age of Shooter vs. Total Victims")
+
+m_total_victims_location_type <- lm(total_victims_log ~ Region, data = mother_jones)
+
+summary(m_total_victims_location_type)
+tidy(m_total_victims_location_type)
+confint(m_total_victims_location_type)
+
+augment(m_total_victims_location_type) %>%
+  ggplot(mapping = aes(x = .resid)) +
+    geom_histogram()
+
+library(qqplotr)
+augment(m_total_victims_location_type) %>%
+  ggplot(mapping = aes(sample = .resid)) +
+    stat_qq_point(size = 2, color = "red") + 
+    stat_qq_line(color="green") +
+    xlab("Theoretical Quantiles") + ylab("Sample Quantiles") 
+```
+
+```{r weapons_obtained_legally_model, echo = FALSE, include=FALSE}
+m_total_victims_weapons_obtained_legally <- lm(total_victims_log ~ weapons_obtained_legally, data = mother_jones)
+summary(m_total_victims_weapons_obtained_legally)
+tidy(m_total_victims_weapons_obtained_legally)
+confint(m_total_victims_weapons_obtained_legally)
+```
+
+```{r weapons_obtained_legally_analysis, echo = FALSE, include=FALSE}
+mother_jones %>%
+  select(total_victims_log, weapons_obtained_legally) %>% 
+  ggpairs() 
+
+ggplot(mother_jones, mapping = aes(x = weapons_obtained_legally, y = total_victims_log)) +
+  geom_point() +      
+  geom_smooth(method = "lm", se = FALSE, col = "blue") + 
+  labs(x = "Injured", y = "Total Victims", title = "Age of Shooter vs. Total Victims")
+
+augment(m_total_victims_weapons_obtained_legally) %>%
+  ggplot(mapping = aes(x = .resid)) +
+    geom_histogram()
+
+augment(m_total_victims_weapons_obtained_legally) %>%
+  ggplot(mapping = aes(sample = .resid)) +
+    stat_qq_point(size = 2, color = "red") + 
+    stat_qq_line(color="green") +
+    xlab("Theoretical Quantiles") + ylab("Sample Quantiles") 
+```
+
+```{r best_model, echo = FALSE}
+m_total_victims_age_year <- lm(total_victims_log ~ age_of_shooter + year, data = mother_jones)
+tidy(m_total_victims_age_year)
+confint(m_total_victims_age_year)
+summary(m_total_victims_age_year)
+```
+
+Equation of the best model: $\widehat{log(total_victims)} = 38.678 - .0166ageOfShooter - 0.178year$
+
+```{r normal_probability_plot, echo = FALSE}
+augment(m_total_victims_age_year) %>%
+  ggplot(mapping = aes(sample = .resid)) +
+    stat_qq_point(size = 2, color = "red") + 
+    stat_qq_line(color="green") +
+    xlab("Theoretical Quantiles") + ylab("Sample Quantiles") 
+```
+
+
+<b>Conclusion and Discussion:<b>
+
+	The age of the shooter checked all the assumptions. The residuals by the predicted plot were randomly scattered, and points lined up perfectly on the x = y line in the normal probability plot. Because no patterns were seen, independence was assumed. The histogram of the residuals was normally distributed. The constant variance was checked as the residuals by the predicted plot did not have any patterns.
+
+	The year also checked all assumptions, except for the fact that there does not seem to be a normal distribution of the residuals, making me reconsider using it in the best model. The residuals by the predicted plot were randomly scattered, and points lined up perfectly on the x = y line in the normal probability plot, except the trailing end. Especially after doing the Shapiro Wilks test, I found that the null hypothesis was rejected and that it is not normal. However, the reason I kept it was because of the way it improved the model, as seen by the increasing r-squared. 
+
+  For the best model for predicting total victims, I found all else held constant, for each additional year, the total victims number is predicted, on average, to increase by a factor of .982. All else held constant, for each additional increase in age in years, the total victims number is predicted, on average, to increase by a factor of .837. 
+
+  In the model with year as the only predictor, the adjusted r-squared was 4.3%. In the model with the age of the shooter as the only predictor, the r-squared was 4.9%. In the model with both predictors, the r-squared was 11.1%. Adding an extra variable improved the model. 
+
+  What I learned is that as the years progress, the total victim's number decreases, which is good news. I also learned there aren’t many mass shootings in the US. Although interestingly, as the year's increase, the number of cases also increases. This dataset spans from 1982 to 1922, and there are 133 cases, which is not as many as I thought it would be. It makes sense the number of victims decreases as the age of the shooter increases. The shooters are more likely to commit more damage when they are younger than older. 
+
+	My methods definitely need improvement, as I included a variable that failed to check all the assumptions. The only best predictor, in that case, would be the age of the shooter as it is the only true predictor because after doing the Shapiro-Wilks test, it accepts the null hypothesis that the data is normal. This shown for the p-value is .0471, which is less than .05.
+
+  This dataset was not 100% reliable. To truly predict the total number of victims, there should be more cases. The more, the better. If total fatalities of less than 3 were included, although it does not match the federal definition of what a mass shooting is, it would have improved the model more, especially when using categorical variables as predictors, such as prior signs of mental health issues, weapons obtained legally, location type, etc. There were also too many missing values that might have hindered the predictions. Oftentimes, a variable will increase the adjusted r-squared when it is added to the model, but it would increase the p-values of all the models. This was the case with prior signs of mental health issues. As a very final step, I decided to use the Shapiro-Wilks test. After doing it on all the variables that I had, I have come to conclude that only the age of the shooter model is normal. 
+
+	If I started over, I would predict a categorical variable. This dataset contains multiple categorical variables that I could have predicted but was too immersed in predicting total victims. 
+	
+		In conclusion, even if I indicated that the best model was where the year and age of the shooter were predictors, this model may not be the best to use because the year variable violates the normality assumptions. Maybe predicting total victims by the age of shooter only will be the better model. It also may be better to use because it does improve the model as it increases the r-squared. 
+
+
+
+
+
+
+
+
+
+
